@@ -1,0 +1,6 @@
+# Abaikan folder cache otomatis dari Python & VS Code
+__pycache__/
+*.pyc
+.venv/
+venv/
+.vscode/
