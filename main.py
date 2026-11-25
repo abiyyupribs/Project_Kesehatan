@@ -1,144 +1,105 @@
-# File: main.py
-# File utama buat jalanin tampilan web, tinggal import dari materi.py, soal.py, dan mesin_data.py
+# ==============================================================================
+# FILE: main.py (Super Pendek - Cuma Tampilan Utama & Import Modul)
+# ==============================================================================
 
+import os
+import pandas as pd
 import streamlit as st
-from materi import DEFINISI_STRES, DEFINISI_TIDUR, FAKTA_RISET, ambil_saran_stres, ambil_saran_tidur
-from soal import SOAL_STRES, SOAL_TIDUR, cek_stres, cek_tidur
-from mesin_data import baca_csv, bandingkan_data, ringkasan_csv, simpan_riwayat, baca_riwayat
 
-st.set_page_config(page_title="Diagnosa Stres & Tidur", page_icon="🩺")
-st.title("🩺 Diagnosa Stres Akademik & Kualitas Tidur")
-st.caption("Sumber Data & Instrumen: Skripsi Agus (ITSKes ICMe Jombang, 2023)")
+from soal import (
+    PILIHAN_DASS, SOAL_STRES, SOAL_CEMAS, SOAL_DEPRESI, SOAL_TIDUR,
+    cek_stres, cek_cemas, cek_depresi, cek_tidur,
+)
+from materi import INFO_STRES, INFO_DASS42, INFO_PSQI, KENAPA_HARUS_TES
+from analisis import cek_kemiripan_jurnal, ambil_saran_stres, ambil_saran_tidur, simpan_riwayat
 
-# Baca file CSV riset dulu
-try:
-    df = baca_csv()
-except FileNotFoundError:
-    st.error("File 'data_stres_tidur_mahasiswa.csv' tidak ditemukan di folder ini!")
-    st.stop()
+st.set_page_config(page_title="Cek Stres & Tidur Mahasiswa", page_icon="🩺", layout="wide")
+st.title("🩺 Aplikasi Deteksi Dini Stres & Kualitas Tidur Mahasiswa")
+st.write("Instrumen baku **DASS-42** & **PSQI** berdasarkan rujukan **3 Jurnal Ilmiah**.")
 
-# Bikin 3 Tab menu di bagian atas web
-tab_materi, tab_tes, tab_data = st.tabs(["📖 Pengenalan", "📝 Mulai Tes", "📊 Data Riset & Riwayat"])
+# Fungsi tampilkan soal DASS-42 pakai tombol radio menyamping
+def tanya_dass(daftar_soal, kode):
+    return [st.radio(teks, PILIHAN_DASS, index=None, horizontal=True, key=f"{kode}_{i}") for i, teks in enumerate(daftar_soal)]
 
-# ================= TAB 1: PENGENALAN MATERI =================
-with tab_materi:
-    st.subheader("Mengenal Stres Akademik & Kualitas Tidur")
-    kol1, kol2 = st.columns(2)
-    kol1.info(f"**Apa itu Stres Akademik?**\n\n{DEFINISI_STRES}")
-    kol2.info(f"**Apa itu Kualitas Tidur?**\n\n{DEFINISI_TIDUR}")
-    st.success(f"**Fakta Riset (40 Mahasiswa):**\n\n{FAKTA_RISET}")
+tab1, tab2, tab3 = st.tabs(["📚 1. Pengenalan & 3 Jurnal", "📝 2. Isi Kuesioner", "📊 3. Hasil & Riwayat"])
 
-    with st.expander("Lihat Aturan Penilaian Skor"):
-        st.write("- **Stres Akademik:** `< 37` Rendah | `37 - 58` Sedang | `>= 59` Tinggi")
-        st.write("- **Kualitas Tidur:** `0 - 5` Baik | `6 - 7` Cukup Baik | `8 - 14` Tidak Baik | `15 - 21` Sangat Tidak Baik")
+# ==================== TAB 1: MATERI & 3 JURNAL ====================
+with tab1:
+    k1, k2 = st.columns(2)
+    k1.info(f"**Apa itu Stres Akademik?**\n\n{INFO_STRES}")
+    k2.info(f"**Kenapa Harus Deteksi Dini?**\n\n{KENAPA_HARUS_TES}")
 
-# ================= TAB 2: KUESIONER & HASIL =================
-with tab_tes:
-    with st.form("form_tes"):
-        c1, c2 = st.columns([2, 1])
-        nama = c1.text_input("Nama / Inisial", placeholder="Contoh: Mhs_01")
-        pilih_gender = c2.selectbox("Jenis Kelamin", ["Laki-laki", "Perempuan"])
-
-        st.subheader("1. Kuesioner Stres Akademik")
-        jawab_stres = []
-        for nomor, teks_soal in enumerate(SOAL_STRES, start=1):
-            pilih = st.radio(f"{nomor}. {teks_soal}", ["Ya", "Tidak"], index=None, horizontal=True, key=f"s_{nomor}")
-            jawab_stres.append(pilih)
-
-        st.subheader("2. Kuesioner Kualitas Tidur")
-        jawab_tidur = []
-        for nomor, (teks_soal, pilihan) in enumerate(SOAL_TIDUR, start=1):
-            pilih = st.radio(f"{nomor}. {teks_soal}", pilihan, index=None, key=f"t_{nomor}")
-            jawab_tidur.append(pilih)
-
-        tombol_cek = st.form_submit_button("Cek Hasil Diagnosa", type="primary")
-
-    if tombol_cek:
-        if None in jawab_stres or None in jawab_tidur:
-            st.warning("Masih ada pertanyaan yang belum diisi bray!")
-        else:
-            # Bersihkan input nama (cegah karakter awal rumus Excel seperti =, +, -, @)
-            nama_bersih = nama.strip()
-            while len(nama_bersih) > 0 and nama_bersih[0] in ("=", "+", "-", "@"):
-                nama_bersih = nama_bersih[1:].strip()
-
-            if nama_bersih == "":
-                nama_user = "Anonim"
-            else:
-                nama_user = nama_bersih
-
-            if pilih_gender == "Laki-laki":
-                kode_gender = "L"
-            else:
-                kode_gender = "P"
-
-            # Hitung total skor stres pakai loop for biasa
-            skor_s = 0
-            for jawaban in jawab_stres:
-                if jawaban == "Ya":
-                    skor_s = skor_s + 5
-                else:
-                    skor_s = skor_s + 1
-
-            # Hitung total skor tidur pakai loop for biasa
-            skor_t = 0
-            for jawaban in jawab_tidur:
-                angka = int(jawaban[0])
-                skor_t = skor_t + angka
-
-            # Cek kategori dan ambil saran
-            kat_s = cek_stres(skor_s)
-            kat_t = cek_tidur(skor_t)
-            saran_s = ambil_saran_stres(kat_s)
-            saran_t = ambil_saran_tidur(kat_t)
-
-            # SIMPAN OTOMATIS KE FILE riwayat_tes.csv
-            simpan_riwayat(nama_user, pilih_gender, skor_s, kat_s, skor_t, kat_t)
-
-            # Bandingkan dengan CSV riset pakai fungsi di mesin_data.py
-            total, rata_s, rata_t, jml_sama, persen_sama, tot_g, jml_g, persen_g = bandingkan_data(
-                df, kat_s, kat_t, kode_gender
-            )
-
-            st.success(f"Hasil Diagnosa untuk **{nama_user}** ({pilih_gender}) — Otomatis tersimpan ke `riwayat_tes.csv`!")
-            m1, m2 = st.columns(2)
-            m1.metric("Stres Akademik", kat_s, f"Skor: {skor_s}/80")
-            m2.metric("Kualitas Tidur", kat_t, f"Skor: {skor_t}/21")
-
-            st.info(
-                f"**Perbandingan Data Riset:**\n"
-                f"- Rata-rata skor riset: Stres **{rata_s:.1f}** | Tidur **{rata_t:.1f}**\n"
-                f"- Kondisi sama di seluruh riset: **{jml_sama}/{total} mahasiswa ({persen_sama:.1f}%)**\n"
-                f"- Kondisi sama di kelompok {pilih_gender}: **{jml_g}/{tot_g} orang ({persen_g:.1f}%)**"
-            )
-
-            st.subheader("💡 Saran Penanganan")
-            st.write(f"**Untuk {kat_s}:**")
-            for poin in saran_s:
-                st.write(f"- {poin}")
-
-            st.write(f"**Untuk {kat_t}:**")
-            for poin in saran_t:
-                st.write(f"- {poin}")
-
-# ================= TAB 3: DATA RISET & RIWAYAT USER =================
-with tab_data:
-    sebaran_s, sebaran_t, tabel_silang = ringkasan_csv(df)
-
-    st.subheader("1. Riwayat Pengguna yang Pernah Tes (`riwayat_tes.csv`)")
-    df_riwayat = baca_riwayat()
-    if df_riwayat is not None:
-        st.dataframe(df_riwayat)
-    else:
-        st.info("Belum ada data pengisi. Coba isi kuesioner di Tab 'Mulai Tes', nanti datanya muncul di sini!")
+    k3, k4 = st.columns(2)
+    k3.success(f"**Apa itu Kuesioner DASS-42?**\n\n{INFO_DASS42}")
+    k4.success(f"**Apa itu Kuesioner PSQI?**\n\n{INFO_PSQI}")
 
     st.divider()
-    st.subheader("2. Tabel Persilangan Data Riset Skripsi (`pd.crosstab`)")
-    st.dataframe(tabel_silang)
+    df_jurnal = pd.read_csv("referensi_jurnal.csv")
+    st.dataframe(df_jurnal, use_container_width=True, hide_index=True)
+    st.bar_chart(df_jurnal, x="Penulis", y=["Stres_Sedang_Berat_Persen", "Tidur_Buruk_Persen"])
 
-    g1, g2 = st.columns(2)
-    g1.bar_chart(sebaran_s)
-    g2.bar_chart(sebaran_t)
+# ==================== TAB 2: KUESIONER ====================
+with tab2:
+    st.info("📌 **Petunjuk:** Jawab berdasarkan kondisi yang kamu rasakan **selama 1 minggu terakhir**.")
 
-    st.subheader("3. Data Mentah 40 Responden Skripsi (CSV)")
-    st.dataframe(df)
+    with st.form("form_tes"):
+        c1, c2, c3 = st.columns(3)
+        nama = c1.text_input("Nama / Inisial", placeholder="Contoh: Mhs_01")
+        gender = c2.selectbox("Jenis Kelamin", ["Laki-laki", "Perempuan"])
+        umur = c3.number_input("Umur", min_value=17, max_value=35, value=21)
+
+        st.markdown("### Bagian A: Tingkat Stres (DASS-42)")
+        jawab_stres = tanya_dass(SOAL_STRES, "stres")
+
+        st.markdown("### Bagian B: Tingkat Kecemasan (DASS-42)")
+        jawab_cemas = tanya_dass(SOAL_CEMAS, "cemas")
+
+        st.markdown("### Bagian C: Tingkat Depresi (DASS-42)")
+        jawab_depresi = tanya_dass(SOAL_DEPRESI, "depresi")
+
+        st.markdown("### Bagian D: Kualitas Tidur (PSQI)")
+        jawab_tidur = [st.radio(t, p, index=None, key=f"tidur_{i}") for i, (t, p) in enumerate(SOAL_TIDUR)]
+
+        klik_hitung = st.form_submit_button("✅ Hitung Hasil & Lihat Saran", type="primary")
+
+    if klik_hitung:
+        nama_bersih = nama.strip()
+        if nama_bersih == "" or None in (jawab_stres + jawab_cemas + jawab_depresi + jawab_tidur):
+            st.warning("Pastikan nama sudah diisi dan semua pertanyaan sudah dijawab ya bray!")
+        else:
+            if nama_bersih[0] in ["=", "+", "-", "@"]:
+                nama_bersih = "'" + nama_bersih
+
+            # Hitung skor & kategori pakai modul soal.py
+            s_stres, s_cemas = sum(int(j[0]) for j in jawab_stres), sum(int(j[0]) for j in jawab_cemas)
+            s_depresi, s_tidur = sum(int(j[0]) for j in jawab_depresi), sum(int(j[0]) for j in jawab_tidur)
+            k_stres, k_cemas = cek_stres(s_stres), cek_cemas(s_cemas)
+            k_depresi, k_tidur = cek_depresi(s_depresi), cek_tidur(s_tidur)
+
+            # Simpan & bandingkan hasil pakai modul analisis.py
+            simpan_riwayat(nama_bersih, gender, umur, s_stres, k_stres, s_cemas, k_cemas, s_depresi, k_depresi, s_tidur, k_tidur)
+            mirip_stres, mirip_tidur = cek_kemiripan_jurnal(k_stres, k_tidur)
+
+            st.success(f"Hasil untuk **{nama_bersih}** berhasil disimpan!")
+            h1, h2, h3, h4 = st.columns(4)
+            h1.metric("Stres", f"{s_stres}/42", k_stres)
+            h2.metric("Kecemasan", f"{s_cemas}/42", k_cemas)
+            h3.metric("Depresi", f"{s_depresi}/42", k_depresi)
+            h4.metric("Kualitas Tidur", f"{s_tidur}/21", k_tidur)
+
+            st.info(f"📊 **Kemiripan dengan 245 Responden (3 Jurnal):**\n- **Stres:** {mirip_stres}\n- **Tidur:** {mirip_tidur}")
+
+            s1, s2 = st.columns(2)
+            s1.write(f"**Saran Stres ({k_stres}):**\n" + "\n".join(f"- {p}" for p in ambil_saran_stres(k_stres)))
+            s2.write(f"**Saran Tidur ({k_tidur}):**\n" + "\n".join(f"- {p}" for p in ambil_saran_tidur(k_tidur)))
+
+# ==================== TAB 3: RIWAYAT ====================
+with tab3:
+    if os.path.exists("riwayat_tes.csv"):
+        df_riwayat = pd.read_csv("riwayat_tes.csv")
+        st.write("**Hasil Tes Paling Baru:**")
+        st.dataframe(df_riwayat.tail(1), use_container_width=True, hide_index=True)
+        st.write("**Semua Riwayat Pengguna:**")
+        st.dataframe(df_riwayat, use_container_width=True, hide_index=True)
+    else:
+        st.info("Belum ada data tes. Silakan isi kuesioner di Tab 2 dulu.")

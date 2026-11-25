@@ -1,2 +1,3 @@
-waktu_tes,nama,jenis_kelamin,skor_stres,kategori_stres,skor_tidur,kategori_tidur
-2026-11-21 16:18,hanan,Laki-laki,32,Stres Rendah,11,Tidur Tidak Baik
+Waktu,Nama,Gender,Umur,Skor_Stres,Kategori_Stres,Skor_Cemas,Kategori_Cemas,Skor_Depresi,Kategori_Depresi,Skor_Tidur,Kategori_Tidur
+2026-11-25 22:05,mhhss,Laki-laki,21,0,Normal,0,Normal,0,Normal,0,Kualitas Tidur Baik
+2026-11-25 22:18,adly,Laki-laki,21,6,Normal,5,Normal,0,Normal,10,Kualitas Tidur Buruk
